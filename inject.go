@@ -6,9 +6,15 @@ import (
 	"reflect"
 )
 
+/*type Injectors interface {
+	All() []Injector
+}*/
+
 // Injector represents an interface for mapping and injecting dependencies into structs
 // and function arguments.
 type Injector interface {
+	/*Injectors*/
+
 	Applicator
 	Invoker
 	TypeMapper
@@ -16,6 +22,9 @@ type Injector interface {
 	// dependency in its Type map it will check its parent before returning an
 	// error.
 	SetParent(Injector)
+	Start()
+	Stop()
+	addEvent(Event)
 }
 
 // Applicator represents an interface for mapping dependencies to a struct.
@@ -52,9 +61,32 @@ type TypeMapper interface {
 	Get(reflect.Type) reflect.Value
 }
 
+type Event struct {
+	Src  Injector
+	Type string
+	Data interface{}
+}
+
+type Handler interface{}
+
+func validateHandler(handler Handler) {
+	t := reflect.TypeOf(handler)
+	if t.Kind() != reflect.Func {
+		panic("inject handler must be a callable func")
+	}
+	if t.NumIn() == 0 && t.In(0) != Event.Type {
+		panic("the first arg of inject handler must be a Event type")
+	}
+}
+
 type injector struct {
-	values map[reflect.Type]reflect.Value
-	parent Injector
+	values   map[reflect.Type]reflect.Value
+	handlers map[string][]Handler
+	events   chan Event
+	stopped  chan bool
+	parent   Injector
+	/*injectors     []*injector
+	injectorsLock sync.RWMutex*/
 }
 
 // InterfaceOf dereferences a pointer to an Interface type.
@@ -77,6 +109,10 @@ func InterfaceOf(value interface{}) reflect.Type {
 func New() Injector {
 	return &injector{
 		values: make(map[reflect.Type]reflect.Value),
+		handlers: make(map[string][]Handler),
+		events: make(chan Event),
+		stopped: make(chan bool),
+		/*injectors: make([]*injector,0),*/
 	}
 }
 
@@ -185,3 +221,64 @@ func (i *injector) Get(t reflect.Type) reflect.Value {
 func (i *injector) SetParent(parent Injector) {
 	i.parent = parent
 }
+
+func (i *injector)On(key string, handlers ...Handler) {
+	for _, h := range handlers {
+		validateHandler(h)
+	}
+	if i.handlers[key] == nil {
+		i.handlers[key] = handlers
+	} else {
+		i.handlers[key] = append(i.handlers[key], handlers...)
+	}
+	return i
+}
+func (i *injector)Fire(key string, data interface{}) {
+	if i.handlers[key] != nil {
+		e := Event{
+			Src:i,
+			Type:key,
+			Data:data,
+		}
+		i.events <- e
+	}
+}
+
+func (i *injector)run(e Event) {
+	hs := i.handlers[e.Type]
+	if hs == nil {
+		if i.parent == nil {
+			panic(fmt.Sprintf("%s %s", "unknow event type ", e.Type))
+		}
+		i.parent.addEvent(e)
+	} else {
+		i.Set(Event.Type, e)
+		for _, h := range hs {
+			i.Invoke(h)
+		}
+	}
+}
+
+func (i *injector)Start() {
+	go func() {
+		for {
+			select {
+			case e := <-i.events:
+				i.run(e)
+			case <-i.stopped:
+				return
+			}
+		}
+	}()
+}
+
+func (i *injector)Stop() {
+	i.stopped <- true
+}
+
+/*func (i *injector)All() {
+	i.injectorsLock.RLock()
+	defer i.injectorsLock.RUnlock()
+	return i.injectors
+}*/
+
