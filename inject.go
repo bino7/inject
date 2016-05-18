@@ -4,6 +4,7 @@ package inject
 import (
 	"fmt"
 	"reflect"
+	"github.com/bino7/inject"
 )
 
 /*type Injectors interface {
@@ -24,7 +25,7 @@ type Injector interface {
 	SetParent(Injector)
 	Start()
 	Stop()
-	addEvent(Event)
+	Events()chan inject.Event
 }
 
 // Applicator represents an interface for mapping dependencies to a struct.
@@ -281,4 +282,8 @@ func (i *injector)Stop() {
 	defer i.injectorsLock.RUnlock()
 	return i.injectors
 }*/
+
+func (i *injector)Events()chan <- Event{
+	return i.events
+}
 
