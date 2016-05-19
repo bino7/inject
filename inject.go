@@ -25,7 +25,9 @@ type Injector interface {
 	SetParent(Injector)
 	Start()
 	Stop()
-	Events()chan inject.Event
+	Events() chan inject.Event
+	On(key string, handlers ...Handler)
+	Fire(key string, data interface{})
 }
 
 // Applicator represents an interface for mapping dependencies to a struct.
@@ -251,7 +253,7 @@ func (i *injector)run(e Event) {
 		if i.parent == nil {
 			panic(fmt.Sprintf("%s %s", "unknow event type ", e.Type))
 		}
-		i.parent.addEvent(e)
+		i.parent.Events <- e
 	} else {
 		i.Set(Event.Type, e)
 		for _, h := range hs {
@@ -283,7 +285,7 @@ func (i *injector)Stop() {
 	return i.injectors
 }*/
 
-func (i *injector)Events()chan <- Event{
+func (i *injector)Events() chan <- Event {
 	return i.events
 }
 
